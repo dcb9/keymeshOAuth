@@ -18,8 +18,18 @@ Resources:
         Fn::ImportValue:
           !Join ['-', [!Ref 'ProjectId', !Ref 'AWS::Region', 'LambdaTrustRole']]
       Events:
-        GetEvent:
+        HomePage:
           Type: Api
           Properties:
             Path: /
             Method: get
+        GenerateTwitterLoginURLEvent:
+          Type: Api
+          Properties:
+            Path: /twitter/login-url
+            Method: post
+        GetTwitterUserInfo:
+          Type: Api
+          Properties:
+            Path: /twitter/user-info
+            Method: post
