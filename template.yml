@@ -27,9 +27,9 @@ Resources:
           Type: Api
           Properties:
             Path: /twitter/login-url
-            Method: post
+            Method: get
         GetTwitterUserInfo:
           Type: Api
           Properties:
             Path: /twitter/user-info
-            Method: post
+            Method: get
