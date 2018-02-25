@@ -23,6 +23,11 @@ Resources:
           Properties:
             Path: /
             Method: get
+        NotFoundHandler:
+          Type: Api
+          Properties:
+            Path: /{anything+}
+            Method: get
         GenerateTwitterLoginURLEvent:
           Type: Api
           Properties:
