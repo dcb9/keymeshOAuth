@@ -11,9 +11,9 @@
     <button onclick="login()" id="loginButton">Login with Twitter</button>
 
     <script>
-        if (window.location.pathname === "/twitter/callback") {
+        if (window.location.pathname.endsWith("/twitter/callback")) {
             document.getElementById('loginButton').style.display = "none"
-            const url = 'twitter/user-info' + window.location.search
+            const url = 'user-info' + window.location.search
             fetch(url)
                 .then(resp => resp.text())
                 .then(body => {
