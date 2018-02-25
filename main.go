@@ -17,7 +17,7 @@ import (
 var oauth1Config = &oauth1.Config{
 	ConsumerKey:    os.Getenv("TWITTER_CONSUMER_KEY"),
 	ConsumerSecret: os.Getenv("TWITTER_CONSUMER_SECRET"),
-	CallbackURL:    "http://localhost:8080/twitter/callback",
+	CallbackURL:    os.Getenv("TWITTER_CALLBACK_URL"),
 	Endpoint:       twitterOAuth1.AuthorizeEndpoint,
 }
 
