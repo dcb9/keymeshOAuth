@@ -5,10 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 
 	goTwitter "github.com/dghubble/go-twitter/twitter"
 	"github.com/dghubble/oauth1"
+	twitterOAuth1 "github.com/dghubble/oauth1/twitter"
 )
+
+func NewConfig() *oauth1.Config {
+	return &oauth1.Config{
+		ConsumerKey:    os.Getenv("TWITTER_CONSUMER_KEY"),
+		ConsumerSecret: os.Getenv("TWITTER_CONSUMER_SECRET"),
+		CallbackURL:    os.Getenv("TWITTER_CALLBACK_URL"),
+		Endpoint:       twitterOAuth1.AuthorizeEndpoint,
+	}
+}
 
 func GenerateTwitterLoginURL(config *oauth1.Config) string {
 	requestToken, _, err := config.RequestToken()

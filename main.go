@@ -5,27 +5,23 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/dcb9/testOAuth/twitter"
-	"github.com/dghubble/oauth1"
-	twitterOAuth1 "github.com/dghubble/oauth1/twitter"
 )
 
-var oauth1Config = &oauth1.Config{
-	ConsumerKey:    os.Getenv("TWITTER_CONSUMER_KEY"),
-	ConsumerSecret: os.Getenv("TWITTER_CONSUMER_SECRET"),
-	CallbackURL:    os.Getenv("TWITTER_CALLBACK_URL"),
-	Endpoint:       twitterOAuth1.AuthorizeEndpoint,
-}
+var oauth1Config = twitter.NewConfig()
 
 func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	switch request.Path {
 	case "/twitter/login-url":
 		return getTwitterLoginURL()
 	case "/twitter/user-info":
+		return getTwitterUserInfo(request)
+	case "/github/login-url":
+		return getTwitterLoginURL()
+	case "/github/user-info":
 		return getTwitterUserInfo(request)
 	}
 

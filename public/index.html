@@ -4,16 +4,20 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Twitter Example</title>
+    <title>Serverless OAuth</title>
 </head>
 
 <body>
-    <button onclick="login()" id="loginButton">Login with Twitter</button>
+    <ul>
+        <li><button id="twitterLoginButton" onclick="loginTwitter()">Login With Twitter</button></li>
+        <li><button id="githubLoginButton" onclick="loginGithub()">Login With GitHub</button></li>
+        <li><button id="facebookLoginButton" onclick="loginFacebook()">Login With Facebook</button></li>
+    </ul>
 
     <script>
         if (window.location.pathname.endsWith("/twitter/callback")) {
-            document.getElementById('loginButton').style.display = "none"
-            const url = 'user-info' + window.location.search
+            document.getElementById('twitterLoginButton').style.display = "none"
+            const url = '{{.GetTwitterUserInfoApi}}' + window.location.search + '&user_address=0xabcd'
             fetch(url)
                 .then(resp => resp.text())
                 .then(body => {
@@ -27,12 +31,12 @@
                 })
         }
 
-        function login() {
-            const buttonElement = document.getElementById('loginButton')
+        function loginTwitter() {
+            const buttonElement = document.getElementById('twitterLoginButton')
             buttonElement.disabled = true
             buttonElement.innerHTML = 'Redirecting'
 
-            fetch('twitter/login-url')
+            fetch('{{.GetTwitterAuthorizationURLApi}}')
                 .then(resp => resp.text())
                 .then(url => window.location.href = url)
                 .catch(() => {
