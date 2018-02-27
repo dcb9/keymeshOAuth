@@ -1,17 +1,15 @@
 package main
 
 import (
-	"encoding/json"
-	"io/ioutil"
+	"bytes"
+	"html/template"
 	"net/http"
 	"net/url"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/dcb9/testOAuth/twitter"
+	"github.com/dcb9/testOAuth/proxy"
 )
-
-var oauth1Config = twitter.NewConfig()
 
 func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	switch request.Path {
@@ -25,14 +23,15 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 		return getTwitterUserInfo(request)
 	}
 
-	index, err := ioutil.ReadFile("public/index.html")
-	if err != nil {
-		return events.APIGatewayProxyResponse{}, err
-	}
+	var content bytes.Buffer
+	proxy.RenderIndexHTML(proxy.IndexHTMLData{
+		GetTwitterAuthorizationURLApi: template.URL("twitter/login-url"),
+		GetTwitterUserInfoApi:         template.URL("user-info"),
+	}, &content)
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: 200,
-		Body:       string(index),
+		Body:       content.String(),
 		Headers: map[string]string{
 			"Content-Type": "text/html",
 		},
@@ -46,7 +45,7 @@ func main() {
 
 func getTwitterLoginURL() (events.APIGatewayProxyResponse, error) {
 	return events.APIGatewayProxyResponse{
-		Body:       twitter.GenerateTwitterLoginURL(oauth1Config),
+		Body:       proxy.HandleTwitterLoginURL(),
 		StatusCode: 200,
 	}, nil
 }
@@ -58,10 +57,13 @@ func getTwitterUserInfo(request events.APIGatewayProxyRequest) (events.APIGatewa
 	}
 	req, _ := http.NewRequest(http.MethodGet, "?"+params.Encode(), nil)
 
-	user := twitter.GetTwitterUser(oauth1Config, req)
-	bytes, _ := json.Marshal(user)
+	userBytes, err := proxy.HandleTwitterUserInfo(req)
+	if err != nil {
+		return events.APIGatewayProxyResponse{}, err
+	}
+
 	return events.APIGatewayProxyResponse{
-		Body:       string(bytes),
+		Body:       string(userBytes),
 		StatusCode: 200,
 	}, nil
 }

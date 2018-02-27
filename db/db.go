@@ -1,8 +1,8 @@
 package db
 
 import (
-	"errors"
 	"log"
+	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -12,59 +12,41 @@ import (
 )
 
 type AuthorizationItem struct {
-	UserAddress   string `dynamodbav:"user_address,omitempty"`
-	RawTwitter    string `dynamodbav:"raw_twitter,omitempty"`
-	TwitterEmail  string `dynamodbav:"twitter_email,omitempty"`
-	RawGitHub     string `dynamodbav:"raw_github,omitempty"`
-	GitHubEmail   string `dynamodbav:"github_email,omitempty"`
-	RawFacebook   string `dynamodbav:"raw_facebook,omitempty"`
-	FacebookEmail string `dynamodbav:"facebook_email,omitempty"`
+	UserAddress  string       `dynamodbav:"user_address"`
+	PlatformName PlatformName `dynamodbav:"platform_name"`
+	OAuthData    string       `dynamodbav:"oauth_data"`
+	Email        string       `dynamodbav:"email"`
 }
 
-var Conn *dynamodb.DynamoDB
-var tableName = aws.String("authorizations")
+var conn *dynamodb.DynamoDB
+var tableName = aws.String(os.Getenv("AUTHORIZATION_TABLE_NAME"))
+
+type PlatformName string
+
+var (
+	TwitterPlatformName  PlatformName = "twitter"
+	FacebookPlatformName PlatformName = "facebook"
+	GitHubPlatformName   PlatformName = "github"
+)
 
 func init() {
 	sess, err := session.NewSession()
 	if err != nil {
 		log.Fatal(err)
 	}
-	Conn = dynamodb.New(sess, aws.NewConfig())
+	conn = dynamodb.New(sess, aws.NewConfig())
+
+	// create table if not exists
 }
 
 func PutAuthorizationItem(item AuthorizationItem) (*dynamodb.PutItemOutput, error) {
-	item1, _ := dynamodbattribute.MarshalMap(item)
-	putInput := &dynamodb.PutItemInput{
-		Item:      item1,
+	_item, _ := dynamodbattribute.MarshalMap(item)
+	input := &dynamodb.PutItemInput{
+		Item:      _item,
 		TableName: tableName,
 	}
 
-	return Conn.PutItem(putInput)
-}
-
-var emptyUserAddressErr = errors.New("user address can't be empty")
-
-func GetAuthorizationItem(userAddress string) (*AuthorizationItem, error) {
-	if userAddress == "" {
-		return nil, emptyUserAddressErr
-	}
-
-	itemKey, _ := dynamodbattribute.MarshalMap(AuthorizationItem{
-		UserAddress: userAddress,
-	})
-	//	to read an item from a table
-	getItemInput := &dynamodb.GetItemInput{
-		Key:       itemKey,
-		TableName: tableName,
-	}
-
-	result, err := Conn.GetItem(getItemInput)
-	if err != nil {
-		return nil, err
-	}
-	item := AuthorizationItem{}
-	_ = dynamodbattribute.UnmarshalMap(result.Item, &item)
-	return &item, nil
+	return conn.PutItem(input)
 }
 
 func DynamoErrHandler(err error) {
