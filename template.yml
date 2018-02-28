@@ -9,7 +9,7 @@ Parameters:
     Description: AWS CodeStar projectID used to associate new resources to team members
 
 Resources:
-  GetHelloWorld:
+  KeyMeshOAuth:
     Type: AWS::Serverless::Function
     Properties:
       Handler: main
@@ -18,23 +18,13 @@ Resources:
         Fn::ImportValue:
           !Join ['-', [!Ref 'ProjectId', !Ref 'AWS::Region', 'LambdaTrustRole']]
       Events:
-        HomePage:
+        TwitterAuthorizeURL:
           Type: Api
           Properties:
-            Path: /
+            Path: /oauth/twitter/authorize_url
             Method: get
-        NotFoundHandler:
+        TwitterCallback:
           Type: Api
           Properties:
-            Path: /{anything+}
-            Method: get
-        GenerateTwitterLoginURLEvent:
-          Type: Api
-          Properties:
-            Path: /twitter/login-url
-            Method: get
-        GetTwitterUserInfo:
-          Type: Api
-          Properties:
-            Path: /twitter/user-info
+            Path: /oauth/twitter/callback
             Method: get

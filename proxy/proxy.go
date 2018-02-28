@@ -19,26 +19,14 @@ func HandleTwitterLoginURL() string {
 
 var GetUserInfoErr = errors.New("get user info error")
 
-func HandleTwitterUserInfo(req *http.Request) ([]byte, error) {
-	err := req.ParseForm()
-	if err != nil {
-		return nil, err
-	}
-	userAddress := req.Form.Get("user_address")
-
+func HandleTwitterCallback(req *http.Request) ([]byte, error) {
 	user := twitter.GetTwitterUser(oauth1Config, req)
 	if user == nil {
 		return nil, GetUserInfoErr
 	}
 
 	userBytes, _ := json.Marshal(user)
-	item := db.AuthorizationItem{
-		UserAddress:  userAddress,
-		PlatformName: db.TwitterPlatformName,
-		OAuthData:    string(userBytes),
-		Email:        user.Email,
-	}
-	_, err = db.PutAuthorizationItem(item)
+	_, err := db.PutTwitterOAuthItem(*user)
 	if err != nil {
 		return nil, err
 	}
@@ -47,8 +35,8 @@ func HandleTwitterUserInfo(req *http.Request) ([]byte, error) {
 }
 
 type IndexHTMLData struct {
-	GetTwitterAuthorizationURLApi template.URL
-	GetTwitterUserInfoApi         template.URL
+	TwitterAuthorizeURLApi template.URL
+	TwitterCallbackURL     template.URL
 }
 
 func RenderIndexHTML(data IndexHTMLData, writer io.Writer) {

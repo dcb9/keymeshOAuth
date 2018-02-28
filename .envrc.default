@@ -7,3 +7,4 @@ export AWS_SECRET_ACCESS_KEY=
 export AWS_REGION=
 
 export AUTHORIZATION_TABLE_NAME=authorizations_dev
+export TWITTER_OAUTH_TABLE_NAME=twitter_oauth_dev

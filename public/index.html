@@ -17,7 +17,7 @@
     <script>
         if (window.location.pathname.endsWith("/twitter/callback")) {
             document.getElementById('twitterLoginButton').style.display = "none"
-            const url = '{{.GetTwitterUserInfoApi}}' + window.location.search + '&user_address=0xabcd'
+            const url = '{{.TwitterCallbackURL}}' + window.location.search
             fetch(url)
                 .then(resp => resp.text())
                 .then(body => {
@@ -36,7 +36,7 @@
             buttonElement.disabled = true
             buttonElement.innerHTML = 'Redirecting'
 
-            fetch('{{.GetTwitterAuthorizationURLApi}}')
+            fetch('{{.TwitterAuthorizeURLApi}}')
                 .then(resp => resp.text())
                 .then(url => window.location.href = url)
                 .catch(() => {

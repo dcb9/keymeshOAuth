@@ -9,24 +9,29 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	goTwitter "github.com/dghubble/go-twitter/twitter"
 )
 
 type AuthorizationItem struct {
-	UserAddress  string       `dynamodbav:"user_address"`
-	PlatformName PlatformName `dynamodbav:"platform_name"`
-	OAuthData    string       `dynamodbav:"oauth_data"`
-	Email        string       `dynamodbav:"email"`
+	// id = BuildItemId(platformName, original_id)
+	ID          itemID `dynamodbav:"id"`
+	UserAddress string `dynamodbav:"user_address,omitempty"`
+	OAuthData   string `dynamodbav:"oauth_data"`
+	Email       string `dynamodbav:"email"`
 }
 
 var conn *dynamodb.DynamoDB
-var tableName = aws.String(os.Getenv("AUTHORIZATION_TABLE_NAME"))
+var (
+	tableName             = aws.String(os.Getenv("AUTHORIZATION_TABLE_NAME"))
+	twitterOAuthTableName = aws.String(os.Getenv("TWITTER_OAUTH_TABLE_NAME"))
+)
 
-type PlatformName string
+type platformName string
 
 var (
-	TwitterPlatformName  PlatformName = "twitter"
-	FacebookPlatformName PlatformName = "facebook"
-	GitHubPlatformName   PlatformName = "github"
+	TwitterPlatformName  platformName = "twitter"
+	FacebookPlatformName platformName = "facebook"
+	GitHubPlatformName   platformName = "github"
 )
 
 func init() {
@@ -39,11 +44,11 @@ func init() {
 	// create table if not exists
 }
 
-func PutAuthorizationItem(item AuthorizationItem) (*dynamodb.PutItemOutput, error) {
-	_item, _ := dynamodbattribute.MarshalMap(item)
+func PutTwitterOAuthItem(user goTwitter.User) (*dynamodb.PutItemOutput, error) {
+	_item, _ := dynamodbattribute.MarshalMap(user)
 	input := &dynamodb.PutItemInput{
 		Item:      _item,
-		TableName: tableName,
+		TableName: twitterOAuthTableName,
 	}
 
 	return conn.PutItem(input)
@@ -73,4 +78,10 @@ func DynamoErrHandler(err error) {
 		}
 		return
 	}
+}
+
+type itemID string
+
+func BuildItemID(platformName platformName, originalId string) itemID {
+	return itemID(originalId + ":" + string(platformName))
 }
