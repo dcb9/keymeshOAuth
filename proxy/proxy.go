@@ -13,7 +13,7 @@ import (
 
 var oauth1Config = twitter.NewConfig()
 
-func HandleTwitterLoginURL() string {
+func HandleTwitterLoginURL() (string, error) {
 	return twitter.GenerateTwitterLoginURL(oauth1Config)
 }
 

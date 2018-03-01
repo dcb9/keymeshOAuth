@@ -35,13 +35,41 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 
 }
 
+type lambdaHandler func(events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error)
+
 func main() {
-	lambda.Start(handler)
+	lambda.Start(corsHandler(handler))
+}
+
+func corsHandler(h lambdaHandler) lambdaHandler {
+	return func(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+		var resp events.APIGatewayProxyResponse
+		var err error
+		if request.HTTPMethod == "OPTIONS" {
+			resp, err = events.APIGatewayProxyResponse{}, nil
+		} else {
+			resp, err = h(request)
+		}
+		if resp.Headers == nil {
+			resp.Headers = map[string]string{}
+		}
+
+		resp.Headers["Access-Control-Allow-Headers"] = "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+		resp.Headers["Access-Control-Allow-Methods"] = "*"
+		resp.Headers["ccess-Control-Allow-Origin"] = "*"
+
+		return resp, err
+	}
 }
 
 func getTwitterAuthorizeURL() (events.APIGatewayProxyResponse, error) {
+	url, err := proxy.HandleTwitterLoginURL()
+	if err != nil {
+		return events.APIGatewayProxyResponse{}, err
+	}
+
 	return events.APIGatewayProxyResponse{
-		Body:       proxy.HandleTwitterLoginURL(),
+		Body:       url,
 		StatusCode: 200,
 	}, nil
 }
