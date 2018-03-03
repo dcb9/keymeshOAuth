@@ -24,7 +24,12 @@ func main() {
 }
 
 func twitterAuthorizeURLHandler(w http.ResponseWriter, req *http.Request) {
-	loginURL := proxy.HandleTwitterLoginURL()
+	loginURL, err := proxy.HandleTwitterLoginURL()
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	fmt.Fprint(w, loginURL)
 }
 

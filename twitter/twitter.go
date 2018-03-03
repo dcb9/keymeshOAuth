@@ -21,18 +21,18 @@ func NewConfig() *oauth1.Config {
 	}
 }
 
-func GenerateTwitterLoginURL(config *oauth1.Config) string {
+func GenerateTwitterLoginURL(config *oauth1.Config) (string, error) {
 	requestToken, _, err := config.RequestToken()
 	if err != nil {
-		fmt.Println(err)
-		return ""
+		return "", err
 	}
+
 	authorizationURL, err := config.AuthorizationURL(requestToken)
 	if err != nil {
-		fmt.Println(err)
-		return ""
+		return "", err
 	}
-	return authorizationURL.String()
+
+	return authorizationURL.String(), nil
 }
 
 func GetTwitterUser(config *oauth1.Config, request *http.Request) *goTwitter.User {
