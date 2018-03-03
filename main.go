@@ -54,9 +54,9 @@ func corsHandler(h lambdaHandler) lambdaHandler {
 			resp.Headers = map[string]string{}
 		}
 
-		resp.Headers["Access-Control-Allow-Headers"] = "Origin,Accept,Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+		resp.Headers["Access-Control-Allow-Headers"] = "*"
 		resp.Headers["Access-Control-Allow-Methods"] = "*"
-		resp.Headers["ccess-Control-Allow-Origin"] = "*"
+		resp.Headers["Access-Control-Allow-Origin"] = "*"
 
 		return resp, err
 	}
