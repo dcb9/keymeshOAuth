@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/dcb9/testOAuth/proxy"
+	"github.com/dcb9/keymeshOAuth/proxy"
 	"github.com/rs/cors"
 )
 

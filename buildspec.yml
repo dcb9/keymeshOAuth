@@ -7,7 +7,7 @@ phases:
 
       # AWS Codebuild Go images use /go for the $GOPATH so let's symlink our 
       # application source code into that directory structure.
-      - mkdir -p /go/src/github.com/dcb9 ; ln -s "${CODEBUILD_SRC_DIR}" "/go/src/github.com/dcb9/testOAuth"
+      - mkdir -p /go/src/github.com/dcb9 ; ln -s "${CODEBUILD_SRC_DIR}" "/go/src/github.com/dcb9/keymeshOAuth"
 
       # Install golint
       - go get -u github.com/golang/lint/golint
@@ -16,7 +16,7 @@ phases:
     commands:
 
       # Make sure we're in the project directory within our GOPATH
-      - cd "/go/src/github.com/dcb9/testOAuth"
+      - cd "/go/src/github.com/dcb9/keymeshOAuth"
 
       # Fetch all dependencies
       - go get ./...

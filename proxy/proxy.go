@@ -7,8 +7,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/dcb9/testOAuth/db"
-	"github.com/dcb9/testOAuth/twitter"
+	"github.com/dcb9/keymeshOAuth/db"
+	"github.com/dcb9/keymeshOAuth/twitter"
 )
 
 var oauth1Config = twitter.NewConfig()
