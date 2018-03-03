@@ -22,9 +22,9 @@ Resources:
           Type: Api
           Properties:
             Path: /oauth/twitter/authorize_url
-            Method: any
+            Method: get
         TwitterCallback:
           Type: Api
           Properties:
             Path: /oauth/twitter/callback
-            Method: any
+            Method: get
