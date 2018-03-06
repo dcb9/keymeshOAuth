@@ -28,3 +28,9 @@ Resources:
           Properties:
             Path: /oauth/twitter/callback
             Method: any
+        TwitterVerify:
+          Type: Api
+          Properties:
+            Path: /oauth/twitter/verify
+            Method: any
+

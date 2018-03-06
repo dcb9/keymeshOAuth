@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 
@@ -12,9 +11,9 @@ import (
 
 func main() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", welcomeHandler)
 	mux.HandleFunc("/oauth/twitter/authorize_url", twitterAuthorizeURLHandler)
 	mux.HandleFunc("/oauth/twitter/callback", twitterCallbackHandler)
+	mux.HandleFunc("/oauth/twitter/verify", twitterVerifyHandler)
 	handler := cors.Default().Handler(mux)
 
 	err := http.ListenAndServe("localhost:1235", handler)
@@ -43,11 +42,13 @@ func twitterCallbackHandler(w http.ResponseWriter, req *http.Request) {
 
 	fmt.Fprint(w, string(userBytes))
 }
-
-// welcomeHandler shows a welcome message and login button.
-func welcomeHandler(w http.ResponseWriter, req *http.Request) {
-	proxy.RenderIndexHTML(proxy.IndexHTMLData{
-		TwitterAuthorizeURLApi: template.URL("/oauth/twitter/authorize_url"),
-		TwitterCallbackURL:     template.URL("/oauth/twitter/callback"),
-	}, w)
+func twitterVerifyHandler(w http.ResponseWriter, req *http.Request) {
+	userAddress := "0xE11BA2b4D45Eaed5996Cd0823791E0C93114882d"
+	err := proxy.HandleTwitterVerify(userAddress)
+	if err != nil {
+		fmt.Println("proxy.HandleTwitterVerify error:", err.Error())
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	fmt.Fprint(w, "verified")
 }

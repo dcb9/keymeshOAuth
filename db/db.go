@@ -3,6 +3,7 @@ package db
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -14,16 +15,16 @@ import (
 
 type AuthorizationItem struct {
 	// id = BuildItemId(platformName, original_id)
-	ID          itemID `dynamodbav:"id"`
-	UserAddress string `dynamodbav:"user_address,omitempty"`
-	OAuthData   string `dynamodbav:"oauth_data"`
-	Email       string `dynamodbav:"email"`
+	UserAddress string    `json:"user_address"`
+	ID          itemID    `json:"id"`
+	Verified    bool      `json:"verified"`
+	VerifiedAt  time.Time `json:"verified_at"`
 }
 
 var conn *dynamodb.DynamoDB
 var (
-	tableName             = aws.String(os.Getenv("AUTHORIZATION_TABLE_NAME"))
-	twitterOAuthTableName = aws.String(os.Getenv("TWITTER_OAUTH_TABLE_NAME"))
+	authorizationTableName = os.Getenv("AUTHORIZATION_TABLE_NAME")
+	twitterOAuthTableName  = os.Getenv("TWITTER_OAUTH_TABLE_NAME")
 )
 
 type platformName string
@@ -44,11 +45,23 @@ func init() {
 	// create table if not exists
 }
 
+func PutAuthorizationItem(item AuthorizationItem) (*dynamodb.PutItemOutput, error) {
+	return putItem(item, authorizationTableName)
+}
+
 func PutTwitterOAuthItem(user goTwitter.User) (*dynamodb.PutItemOutput, error) {
-	_item, _ := dynamodbattribute.MarshalMap(user)
+	return putItem(user, twitterOAuthTableName)
+}
+
+func putItem(item interface{}, tableName string) (*dynamodb.PutItemOutput, error) {
+	_item, err := dynamodbattribute.MarshalMap(item)
+	if err != nil {
+		return nil, err
+	}
+
 	input := &dynamodb.PutItemInput{
 		Item:      _item,
-		TableName: twitterOAuthTableName,
+		TableName: aws.String(tableName),
 	}
 
 	return conn.PutItem(input)
@@ -83,5 +96,26 @@ func DynamoErrHandler(err error) {
 type itemID string
 
 func BuildItemID(platformName platformName, originalId string) itemID {
-	return itemID(originalId + ":" + string(platformName))
+	return itemID(string(platformName) + ":" + originalId)
+}
+
+func GetTwitterOAuthItem(screenName string) (*dynamodb.GetItemOutput, error) {
+	item := map[string]string{
+		"screen_name": screenName,
+	}
+	return getItem(item, twitterOAuthTableName)
+}
+
+func getItem(item interface{}, tableName string) (*dynamodb.GetItemOutput, error) {
+	_item, err := dynamodbattribute.MarshalMap(item)
+	if err != nil {
+		return nil, err
+	}
+
+	input := &dynamodb.GetItemInput{
+		Key:       _item,
+		TableName: aws.String(tableName),
+	}
+
+	return conn.GetItem(input)
 }
