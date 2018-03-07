@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,12 +15,51 @@ func main() {
 	mux.HandleFunc("/oauth/twitter/authorize_url", twitterAuthorizeURLHandler)
 	mux.HandleFunc("/oauth/twitter/callback", twitterCallbackHandler)
 	mux.HandleFunc("/oauth/twitter/verify", twitterVerifyHandler)
+	mux.HandleFunc("/getEthAddresses", getEthAddressesHandler)
 	handler := cors.Default().Handler(mux)
 
 	err := http.ListenAndServe("localhost:1235", handler)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
+}
+
+func getEthAddressesHandler(w http.ResponseWriter, req *http.Request) {
+	err := req.ParseForm()
+	if err != nil {
+		fmt.Println("ParseForm:", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	responseFunc := func(ethAddresses []proxy.GetEthAddress) {
+		bs, _ := json.Marshal(ethAddresses)
+		fmt.Fprint(w, string(bs))
+	}
+
+	username := req.Form.Get("username")
+	if username != "" {
+		ethAddresses, err := proxy.HandleSearchEthAddressesByUsername(username)
+		if err != nil {
+			fmt.Println("proxy.HandleSearchEthAddressesByUsername:", err)
+			w.WriteHeader(http.StatusInternalServerError)
+		} else {
+			responseFunc(ethAddresses)
+		}
+		return
+	}
+
+	usernamePrefix := req.Form.Get("usernamePrefix")
+	if usernamePrefix != "" {
+		ethAddresses, err := proxy.HandleSearchEthAddressesByUsernamePrefix(usernamePrefix)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			responseFunc(ethAddresses)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusBadRequest)
 }
 
 func twitterAuthorizeURLHandler(w http.ResponseWriter, req *http.Request) {
@@ -42,9 +82,15 @@ func twitterCallbackHandler(w http.ResponseWriter, req *http.Request) {
 
 	fmt.Fprint(w, string(userBytes))
 }
+
 func twitterVerifyHandler(w http.ResponseWriter, req *http.Request) {
-	userAddress := "0xE11BA2b4D45Eaed5996Cd0823791E0C93114882d"
-	err := proxy.HandleTwitterVerify(userAddress)
+	err := req.ParseForm()
+	if err != nil {
+		fmt.Println("ParseForm:", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	err = proxy.HandleTwitterVerify(req.Form.Get("ethAddress"))
 	if err != nil {
 		fmt.Println("proxy.HandleTwitterVerify error:", err.Error())
 		w.WriteHeader(http.StatusBadRequest)

@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
-	"io"
 	"net/http"
 	"time"
 
@@ -15,6 +13,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/lambda"
 )
 
@@ -30,9 +30,43 @@ type SocialProof struct {
 	Username string `json:"username"`
 }
 
-func HandleTwitterVerify(userAddress string) error {
+type GetEthAddress struct {
+	Username     string `json:"username"`
+	PlatformName string `json:"platformName"`
+	EthAddress   string `json:"ethAddress"`
+}
+
+func HandleSearchEthAddressesByUsernamePrefix(usernamePrefix string) ([]GetEthAddress, error) {
+	output, err := db.ScanUsernamePrefix(usernamePrefix)
+	if err != nil {
+		return nil, err
+	}
+
+	return convertScanUsernameOutput(output)
+}
+
+func HandleSearchEthAddressesByUsername(username string) ([]GetEthAddress, error) {
+	output, err := db.ScanUsername(username)
+	if err != nil {
+		return nil, err
+	}
+
+	return convertScanUsernameOutput(output)
+}
+
+func convertScanUsernameOutput(output *dynamodb.ScanOutput) ([]GetEthAddress, error) {
+	var ethAddresses []GetEthAddress
+	err := dynamodbattribute.UnmarshalListOfMaps(output.Items, &ethAddresses)
+	if err != nil {
+		return nil, err
+	}
+
+	return ethAddresses, nil
+}
+
+func HandleTwitterVerify(ethAddress string) error {
 	payload := GetUserLastProofEventPlayload{
-		UserAddress: userAddress,
+		UserAddress: ethAddress,
 		Platform:    "twitter",
 	}
 	payloadBytes, _ := json.Marshal(payload)
@@ -83,7 +117,7 @@ func HandleTwitterVerify(userAddress string) error {
 	fmt.Println("getTwitterOAuthItem:", item)
 
 	_, err = db.PutAuthorizationItem(db.AuthorizationItem{
-		EthAddress:   userAddress,
+		EthAddress:   ethAddress,
 		PlatformName: db.TwitterPlatformName,
 		Username:     socialProof.Username,
 		ProofURL:     socialProof.ProofURL,
@@ -116,14 +150,4 @@ func HandleTwitterCallback(req *http.Request) ([]byte, error) {
 	}
 
 	return userBytes, nil
-}
-
-type IndexHTMLData struct {
-	TwitterAuthorizeURLApi template.URL
-	TwitterCallbackURL     template.URL
-}
-
-func RenderIndexHTML(data IndexHTMLData, writer io.Writer) {
-	t := template.Must(template.ParseFiles("public/index.html"))
-	t.Execute(writer, data)
 }

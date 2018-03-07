@@ -26,9 +26,35 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 		return twitterCallback(request)
 	case "/oauth/twitter/verify":
 		return twitterVerify(request)
+	case "/getEthAddresses":
+		return getEthAddresses(request)
 	}
 
 	return events.APIGatewayProxyResponse{}, errPathNotMatch
+}
+
+var (
+	errGetEthAddresses = errors.New(`the query param "username" or "usernamePrefix" must be set`)
+)
+
+func getEthAddresses(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	responseFunc := func(ethAddresses []proxy.GetEthAddress, err error) (events.APIGatewayProxyResponse, error) {
+		return events.APIGatewayProxyResponse{}, nil
+	}
+
+	username := request.QueryStringParameters["username"]
+	if username != "" {
+		ethAddresses, err := proxy.HandleSearchEthAddressesByUsername(username)
+		return responseFunc(ethAddresses, err)
+	}
+
+	usernamePrefix := request.QueryStringParameters["usernamePrefix"]
+	if usernamePrefix != "" {
+		ethAddresses, err := proxy.HandleSearchEthAddressesByUsernamePrefix(username)
+		return responseFunc(ethAddresses, err)
+	}
+
+	return responseFunc(nil, errGetEthAddresses)
 }
 
 func getTwitterAuthorizeURL() (events.APIGatewayProxyResponse, error) {
@@ -62,15 +88,15 @@ func twitterCallback(request events.APIGatewayProxyRequest) (events.APIGatewayPr
 }
 
 var (
-	errEmptyUserAddress = errors.New("userAddress could not be empty")
+	errEmptyEthAddress = errors.New("ethAddress could not be empty")
 )
 
 func twitterVerify(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	userAddress := request.QueryStringParameters["userAddress"]
-	if userAddress == "" {
-		return events.APIGatewayProxyResponse{}, errEmptyUserAddress
+	ethAddress := request.QueryStringParameters["ethAddress"]
+	if ethAddress == "" {
+		return events.APIGatewayProxyResponse{}, errEmptyEthAddress
 	}
-	err := proxy.HandleTwitterVerify(userAddress)
+	err := proxy.HandleTwitterVerify(ethAddress)
 	if err != nil {
 		return events.APIGatewayProxyResponse{}, err
 	}

@@ -46,6 +46,27 @@ func init() {
 	// create table if not exists
 }
 
+func ScanUsername(username string) (*dynamodb.ScanOutput, error) {
+	return scanUsername(username, "username = :username")
+}
+
+func ScanUsernamePrefix(usernamePrefix string) (*dynamodb.ScanOutput, error) {
+	return scanUsername(usernamePrefix, "begins_with(username, :username)")
+}
+
+func scanUsername(username string, filterExpression string) (*dynamodb.ScanOutput, error) {
+	input := &dynamodb.ScanInput{
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":username": {
+				S: aws.String(username),
+			},
+		},
+		FilterExpression: aws.String(filterExpression),
+		TableName:        aws.String(authorizationTableName),
+	}
+	return conn.Scan(input)
+}
+
 func PutAuthorizationItem(item AuthorizationItem) (*dynamodb.PutItemOutput, error) {
 	return putItem(item, authorizationTableName)
 }

@@ -33,4 +33,8 @@ Resources:
           Properties:
             Path: /oauth/twitter/verify
             Method: any
-
+        GetEthAddresses:
+          Type: Api
+          Properties:
+            Path: /getEthAddresses
+            Method: any
