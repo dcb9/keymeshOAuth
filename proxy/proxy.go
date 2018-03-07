@@ -83,10 +83,12 @@ func HandleTwitterVerify(userAddress string) error {
 	fmt.Println("getTwitterOAuthItem:", item)
 
 	_, err = db.PutAuthorizationItem(db.AuthorizationItem{
-		UserAddress: userAddress,
-		ID:          db.BuildItemID(db.TwitterPlatformName, socialProof.Username),
-		Verified:    true,
-		VerifiedAt:  time.Now(),
+		EthAddress:   userAddress,
+		PlatformName: db.TwitterPlatformName,
+		Username:     socialProof.Username,
+		ProofURL:     socialProof.ProofURL,
+		Verified:     true,
+		VerifiedAt:   time.Now(),
 	})
 	if err != nil {
 		return err

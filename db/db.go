@@ -14,11 +14,12 @@ import (
 )
 
 type AuthorizationItem struct {
-	// id = BuildItemId(platformName, original_id)
-	UserAddress string    `json:"user_address"`
-	ID          itemID    `json:"id"`
-	Verified    bool      `json:"verified"`
-	VerifiedAt  time.Time `json:"verified_at"`
+	EthAddress   string       `json:"ethAddress"`
+	PlatformName platformName `json:"platformName"`
+	Username     string       `json:"username"`
+	ProofURL     string       `json:"proofURL"`
+	Verified     bool         `json:"verified"`
+	VerifiedAt   time.Time    `json:"verified_at"`
 }
 
 var conn *dynamodb.DynamoDB
@@ -91,12 +92,6 @@ func DynamoErrHandler(err error) {
 		}
 		return
 	}
-}
-
-type itemID string
-
-func BuildItemID(platformName platformName, originalId string) itemID {
-	return itemID(string(platformName) + ":" + originalId)
 }
 
 func GetTwitterOAuthItem(screenName string) (*dynamodb.GetItemOutput, error) {
