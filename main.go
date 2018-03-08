@@ -126,7 +126,9 @@ func corsHandler(h lambdaHandler) lambdaHandler {
 		var resp events.APIGatewayProxyResponse
 		var err error
 		if request.HTTPMethod == "OPTIONS" {
-			resp, err = events.APIGatewayProxyResponse{}, nil
+			resp, err = events.APIGatewayProxyResponse{
+				StatusCode: 200,
+			}, nil
 		} else {
 			resp, err = h(request)
 		}
