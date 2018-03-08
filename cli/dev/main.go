@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 
@@ -16,12 +17,33 @@ func main() {
 	mux.HandleFunc("/oauth/twitter/callback", twitterCallbackHandler)
 	mux.HandleFunc("/oauth/twitter/verify", twitterVerifyHandler)
 	mux.HandleFunc("/getEthAddresses", getEthAddressesHandler)
-	handler := cors.Default().Handler(mux)
+	mux.HandleFunc("/prekeys", PutPrekeysHandler)
+	handler := cors.New(cors.Options{
+		AllowedMethods: []string{"GET", "PUT", "POST", "DELETE", "OPTIONS"},
+	}).Handler(mux)
 
 	err := http.ListenAndServe("localhost:1235", handler)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
+}
+
+func PutPrekeysHandler(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	networkID := req.Form.Get("networkID")
+	fmt.Println(networkID)
+	publicKeyHex := req.Form.Get("publicKey")
+	bytes, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		fmt.Println("ioutil.ReadAll", err)
+		return
+	}
+	err = proxy.HandlePutPrekeys(networkID, publicKeyHex, string(bytes))
+	if err != nil {
+		fmt.Println("proxy.HandlePutPrekeys", err)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
 }
 
 func getEthAddressesHandler(w http.ResponseWriter, req *http.Request) {

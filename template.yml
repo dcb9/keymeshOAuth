@@ -38,3 +38,8 @@ Resources:
           Properties:
             Path: /getEthAddresses
             Method: any
+        PutPrekeys:
+          Type: Api
+          Properties:
+            Path: /prekeys
+            Method: any

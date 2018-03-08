@@ -1,2 +1,2 @@
-run dev:
+runDev:
 	go build -o testOAuthDev ./cli/dev && ./testOAuthDev

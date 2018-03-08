@@ -1,14 +1,19 @@
 package proxy
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/dcb9/keymeshOAuth/db"
 	"github.com/dcb9/keymeshOAuth/twitter"
+	"golang.org/x/crypto/ed25519"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -16,9 +21,17 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/lambda"
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 var oauth1Config = twitter.NewConfig()
+var prekeysBucketName = os.Getenv("PREKEYS_BUCKET_NAME")
+var svc *s3.S3
+
+func init() {
+	sess, _ := session.NewSession()
+	svc = s3.New(sess)
+}
 
 type GetUserLastProofEventPlayload struct {
 	UserAddress string `json:"userAddress"`
@@ -34,6 +47,57 @@ type GetEthAddress struct {
 	Username     string `json:"username"`
 	PlatformName string `json:"platformName"`
 	EthAddress   string `json:"ethAddress"`
+}
+
+type PutPrekeysReq struct {
+	Signature string `json:"signature"`
+	Prekeys   string `json:"prekeys"`
+}
+
+var (
+	errInvalidSignature = errors.New("invalid signature")
+)
+
+func verifyPrekeys(publicKeyHex string, request *PutPrekeysReq) (err error) {
+	publicKey, err := hex.DecodeString(publicKeyHex)
+	if err != nil {
+		return
+	}
+
+	signature := make([]byte, base64.StdEncoding.DecodedLen(len(request.Signature)))
+	l, err := base64.StdEncoding.Decode(signature, []byte(request.Signature))
+	if err != nil {
+		return
+	}
+	signature = signature[:l]
+
+	if !ed25519.Verify(publicKey, []byte(request.Prekeys), signature) {
+		err = errInvalidSignature
+		return
+	}
+
+	return
+}
+
+func HandlePutPrekeys(networkID, publicKeyHex string, requestBody string) (err error) {
+	var req PutPrekeysReq
+	err = json.Unmarshal([]byte(requestBody), &req)
+	if err != nil {
+		return
+	}
+
+	err = verifyPrekeys(publicKeyHex, &req)
+	if err != nil {
+		return
+	}
+
+	input := &s3.PutObjectInput{
+		Body:   aws.ReadSeekCloser(strings.NewReader(requestBody)),
+		Bucket: aws.String(prekeysBucketName),
+		Key:    aws.String(fmt.Sprintf("%s/%s", networkID, publicKeyHex)),
+	}
+	_, err = svc.PutObject(input)
+	return
 }
 
 func HandleSearchEthAddressesByUsernamePrefix(usernamePrefix string) ([]GetEthAddress, error) {

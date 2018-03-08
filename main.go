@@ -28,9 +28,22 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 		return twitterVerify(request)
 	case "/getEthAddresses":
 		return getEthAddresses(request)
+	case "/prekeys":
+		return putPrekeys(request)
 	}
 
 	return events.APIGatewayProxyResponse{}, errPathNotMatch
+}
+func putPrekeys(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	networkID := request.QueryStringParameters["networkID"]
+	publicKeyHex := request.QueryStringParameters["publicKey"]
+	err := proxy.HandlePutPrekeys(networkID, publicKeyHex, request.Body)
+	if err != nil {
+		return events.APIGatewayProxyResponse{}, err
+	}
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusCreated,
+	}, nil
 }
 
 var (
