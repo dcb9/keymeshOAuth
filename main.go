@@ -131,6 +131,9 @@ func corsHandler(h lambdaHandler) lambdaHandler {
 			}, nil
 		} else {
 			resp, err = h(request)
+			if err != nil && resp.StatusCode == 0 {
+				resp.StatusCode = http.StatusInternalServerError
+			}
 		}
 		if resp.Headers == nil {
 			resp.Headers = map[string]string{}
