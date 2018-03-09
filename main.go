@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -26,14 +28,17 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 		return twitterCallback(request)
 	case "/oauth/twitter/verify":
 		return twitterVerify(request)
-	case "/getEthAddresses":
-		return getEthAddresses(request)
+	case "/users/search":
+		return serializeUserInfoList(searchUsers(request))
+	case "/users":
+		return serializeUserInfoList(getUsers(request))
 	case "/prekeys":
 		return putPrekeys(request)
 	}
 
 	return events.APIGatewayProxyResponse{}, errPathNotMatch
 }
+
 func putPrekeys(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	networkID := request.QueryStringParameters["networkID"]
 	publicKeyHex := request.QueryStringParameters["publicKey"]
@@ -47,27 +52,47 @@ func putPrekeys(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRe
 }
 
 var (
-	errGetEthAddresses = errors.New(`the query param "username" or "usernamePrefix" must be set`)
+	errEmptyGetUsersParam = errors.New(`the query param "username" or "userAddress" must be set`)
 )
 
-func getEthAddresses(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	responseFunc := func(ethAddresses []proxy.GetEthAddress, err error) (events.APIGatewayProxyResponse, error) {
-		return events.APIGatewayProxyResponse{}, nil
-	}
-
+func getUsers(request events.APIGatewayProxyRequest) ([]*proxy.UserInfo, error) {
 	username := request.QueryStringParameters["username"]
 	if username != "" {
-		ethAddresses, err := proxy.HandleSearchEthAddressesByUsername(username)
-		return responseFunc(ethAddresses, err)
+		userInfoList, err := proxy.HandleGetUserByUsername(username)
+		return userInfoList, err
+	}
+
+	userAddress := request.QueryStringParameters["userAddress"]
+	if userAddress != "" {
+		userInfoList, err := proxy.HandleGetUserByUserAddress(userAddress)
+		return userInfoList, err
+	}
+
+	return nil, errEmptyGetUsersParam
+}
+
+var (
+	errEmptySearchUsersParam = errors.New(`the query param "usernamePrefix" must be set`)
+)
+
+func searchUsers(request events.APIGatewayProxyRequest) ([]*proxy.UserInfo, error) {
+	limit := 10
+	limitStr := request.QueryStringParameters["limit"]
+	if limitStr != "" {
+		var err error
+		limit, err = strconv.Atoi(limitStr)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	usernamePrefix := request.QueryStringParameters["usernamePrefix"]
 	if usernamePrefix != "" {
-		ethAddresses, err := proxy.HandleSearchEthAddressesByUsernamePrefix(username)
-		return responseFunc(ethAddresses, err)
+		userInfoList, err := proxy.HandleSearchUserByUsernamePrefix(usernamePrefix, limit)
+		return userInfoList, err
 	}
 
-	return responseFunc(nil, errGetEthAddresses)
+	return nil, errEmptySearchUsersParam
 }
 
 func getTwitterAuthorizeURL() (events.APIGatewayProxyResponse, error) {
@@ -101,15 +126,15 @@ func twitterCallback(request events.APIGatewayProxyRequest) (events.APIGatewayPr
 }
 
 var (
-	errEmptyEthAddress = errors.New("ethAddress could not be empty")
+	errEmptyUserAddress = errors.New("userAddress could not be empty")
 )
 
 func twitterVerify(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	ethAddress := request.QueryStringParameters["ethAddress"]
-	if ethAddress == "" {
-		return events.APIGatewayProxyResponse{}, errEmptyEthAddress
+	userAddress := request.QueryStringParameters["userAddress"]
+	if userAddress == "" {
+		return events.APIGatewayProxyResponse{}, errEmptyUserAddress
 	}
-	err := proxy.HandleTwitterVerify(ethAddress)
+	err := proxy.HandleTwitterVerify(userAddress)
 	if err != nil {
 		return events.APIGatewayProxyResponse{}, err
 	}
@@ -145,4 +170,17 @@ func corsHandler(h lambdaHandler) lambdaHandler {
 
 		return resp, err
 	}
+}
+
+func serializeUserInfoList(userInfoList []*proxy.UserInfo, err error) (events.APIGatewayProxyResponse, error) {
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, err
+	}
+	bs, _ := json.Marshal(userInfoList)
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Body:       string(bs),
+	}, nil
 }

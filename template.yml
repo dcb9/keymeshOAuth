@@ -33,10 +33,15 @@ Resources:
           Properties:
             Path: /oauth/twitter/verify
             Method: any
-        GetEthAddresses:
+        SearchUsers:
           Type: Api
           Properties:
-            Path: /getEthAddresses
+            Path: /users/search
+            Method: any
+        GetUsers:
+          Type: Api
+          Properties:
+            Path: /users
             Method: any
         PutPrekeys:
           Type: Api

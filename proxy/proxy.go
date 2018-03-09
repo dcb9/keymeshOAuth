@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"crypto/md5"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dcb9/keymeshOAuth/db"
@@ -22,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/lambda"
 	"github.com/aws/aws-sdk-go/service/s3"
+	goTwitter "github.com/dghubble/go-twitter/twitter"
 )
 
 var oauth1Config = twitter.NewConfig()
@@ -43,10 +46,25 @@ type SocialProof struct {
 	Username string `json:"username"`
 }
 
-type GetEthAddress struct {
-	Username     string `json:"username"`
-	PlatformName string `json:"platformName"`
-	EthAddress   string `json:"ethAddress"`
+type omit *struct{}
+type TwitterOAuthInfo struct {
+	*goTwitter.User
+	ContributorsEnabled omit `json:"contributors_enabled,omitempty"`
+	CreatedAt           omit `json:"created_at,omitempty"`
+	Email               omit `json:"email,omitempty"`
+	Entities            omit `json:"entities,omitempty"`
+	ID                  omit `json:"id,omitempty"`
+	IDStr               omit `json:"id_str,omitempty"`
+	Protected           omit `json:"protected,omitempty"`
+	Status              omit `json:"status,omitempty"`
+}
+
+type UserInfo struct {
+	UserAddress      string            `json:"userAddress"`
+	Username         string            `json:"username"`
+	PlatformName     db.PlatformName   `json:"platformName"`
+	TwitterOAuthInfo *TwitterOAuthInfo `json:"twitterOAuthInfo"`
+	GravatarHash     string            `json:"gravatarHash"`
 }
 
 type PutPrekeysReq struct {
@@ -100,7 +118,7 @@ func HandlePutPrekeys(networkID, publicKeyHex string, requestBody string) (err e
 	return
 }
 
-func HandleSearchEthAddressesByUsernamePrefix(usernamePrefix string) ([]GetEthAddress, error) {
+func HandleSearchUserByUsernamePrefix(usernamePrefix string, limit int) ([]*UserInfo, error) {
 	output, err := db.ScanUsernamePrefix(usernamePrefix)
 	if err != nil {
 		return nil, err
@@ -109,7 +127,79 @@ func HandleSearchEthAddressesByUsernamePrefix(usernamePrefix string) ([]GetEthAd
 	return convertScanUsernameOutput(output)
 }
 
-func HandleSearchEthAddressesByUsername(username string) ([]GetEthAddress, error) {
+func NewTwitterOAuthInfo(user *goTwitter.User) *TwitterOAuthInfo {
+	return &TwitterOAuthInfo{
+		User: user,
+	}
+}
+
+func fillTwitterOAuthInfo(userInfoList []*UserInfo, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	usernames := make([]string, 0)
+	for _, v := range userInfoList {
+		usernames = append(usernames, v.Username)
+	}
+	if len(usernames) < 1 {
+		return
+	}
+
+	data, err := db.BatchGetTwitterOAuth(usernames)
+	if err != nil {
+		panic(err)
+	}
+
+	list := make(map[string]*TwitterOAuthInfo)
+	for i, v := range data {
+		list[i] = NewTwitterOAuthInfo(&v)
+	}
+	for i, v := range userInfoList {
+		if v.PlatformName == db.TwitterPlatformName {
+			info := list[v.Username]
+			userInfoList[i].TwitterOAuthInfo = info
+			userInfoList[i].GravatarHash = fmt.Sprintf("%x", md5.Sum([]byte(info.User.Email)))
+		}
+	}
+}
+
+func fillOAuthInfo(userInfoList []*UserInfo) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.New(fmt.Sprintf("error %s", r))
+		}
+	}()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go fillTwitterOAuthInfo(userInfoList, &wg)
+	//go fillFacebookOAuthInfo(userInfoList, &wg)
+	//go fillGithubOAuthInfo(userInfoList, &wg)
+	wg.Wait()
+
+	return
+}
+
+func HandleGetUserByUserAddress(userAddress string) ([]*UserInfo, error) {
+	output, err := db.GetAuthorizationItemByUserAddress(&userAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	userInfoList := make([]*UserInfo, 0)
+	err = dynamodbattribute.UnmarshalListOfMaps(output.Items, &userInfoList)
+	if err != nil {
+		return nil, err
+	}
+
+	err = fillOAuthInfo(userInfoList)
+	if err != nil {
+		return nil, err
+	}
+
+	return userInfoList, nil
+}
+
+func HandleGetUserByUsername(username string) ([]*UserInfo, error) {
 	output, err := db.ScanUsername(username)
 	if err != nil {
 		return nil, err
@@ -118,19 +208,24 @@ func HandleSearchEthAddressesByUsername(username string) ([]GetEthAddress, error
 	return convertScanUsernameOutput(output)
 }
 
-func convertScanUsernameOutput(output *dynamodb.ScanOutput) ([]GetEthAddress, error) {
-	var ethAddresses []GetEthAddress
-	err := dynamodbattribute.UnmarshalListOfMaps(output.Items, &ethAddresses)
+func convertScanUsernameOutput(output *dynamodb.ScanOutput) ([]*UserInfo, error) {
+	userInfoList := make([]*UserInfo, 0)
+	err := dynamodbattribute.UnmarshalListOfMaps(output.Items, &userInfoList)
 	if err != nil {
 		return nil, err
 	}
 
-	return ethAddresses, nil
+	err = fillOAuthInfo(userInfoList)
+	if err != nil {
+		return nil, err
+	}
+
+	return userInfoList, nil
 }
 
-func HandleTwitterVerify(ethAddress string) error {
+func HandleTwitterVerify(userAddress string) error {
 	payload := GetUserLastProofEventPlayload{
-		UserAddress: ethAddress,
+		UserAddress: userAddress,
 		Platform:    "twitter",
 	}
 	payloadBytes, _ := json.Marshal(payload)
@@ -181,7 +276,7 @@ func HandleTwitterVerify(ethAddress string) error {
 	fmt.Println("getTwitterOAuthItem:", item)
 
 	_, err = db.PutAuthorizationItem(db.AuthorizationItem{
-		EthAddress:   ethAddress,
+		UserAddress:  userAddress,
 		PlatformName: db.TwitterPlatformName,
 		Username:     socialProof.Username,
 		ProofURL:     socialProof.ProofURL,

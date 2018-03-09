@@ -14,8 +14,8 @@ import (
 )
 
 type AuthorizationItem struct {
-	EthAddress   string       `json:"ethAddress"`
-	PlatformName platformName `json:"platformName"`
+	UserAddress  string       `json:"userAddress"`
+	PlatformName PlatformName `json:"platformName"`
 	Username     string       `json:"username"`
 	ProofURL     string       `json:"proofURL"`
 	Verified     bool         `json:"verified"`
@@ -24,16 +24,16 @@ type AuthorizationItem struct {
 
 var conn *dynamodb.DynamoDB
 var (
-	authorizationTableName = os.Getenv("AUTHORIZATION_TABLE_NAME")
-	twitterOAuthTableName  = os.Getenv("TWITTER_OAUTH_TABLE_NAME")
+	authorizationTableName = aws.String(os.Getenv("AUTHORIZATION_TABLE_NAME"))
+	twitterOAuthTableName  = aws.String(os.Getenv("TWITTER_OAUTH_TABLE_NAME"))
 )
 
-type platformName string
+type PlatformName string
 
 var (
-	TwitterPlatformName  platformName = "twitter"
-	FacebookPlatformName platformName = "facebook"
-	GitHubPlatformName   platformName = "github"
+	TwitterPlatformName  PlatformName = "twitter"
+	FacebookPlatformName PlatformName = "facebook"
+	GitHubPlatformName   PlatformName = "github"
 )
 
 func init() {
@@ -42,27 +42,63 @@ func init() {
 		log.Fatal(err)
 	}
 	conn = dynamodb.New(sess, aws.NewConfig())
+}
 
-	// create table if not exists
+func BatchGetTwitterOAuth(screenNames []string) (map[string]goTwitter.User, error) {
+	keys := make([]map[string]*dynamodb.AttributeValue, len(screenNames))
+	for i, screenName := range screenNames {
+		keys[i], _ = dynamodbattribute.MarshalMap(map[string]string{
+			"screen_name": screenName,
+		})
+	}
+	input := &dynamodb.BatchGetItemInput{
+		RequestItems: map[string]*dynamodb.KeysAndAttributes{
+			*twitterOAuthTableName: &dynamodb.KeysAndAttributes{
+				Keys: keys,
+			},
+		},
+	}
+	output, err := conn.BatchGetItem(input)
+	if err != nil {
+		return nil, err
+	}
+
+	items, ok := output.Responses[*twitterOAuthTableName]
+	if !ok {
+		return map[string]goTwitter.User{}, nil
+	}
+
+	typedItems := make([]goTwitter.User, len(items))
+	err = dynamodbattribute.UnmarshalListOfMaps(items, &typedItems)
+	if err != nil {
+		return nil, err
+	}
+
+	mappedItems := make(map[string]goTwitter.User)
+	for _, v := range typedItems {
+		mappedItems[v.ScreenName] = v
+	}
+
+	return mappedItems, nil
 }
 
 func ScanUsername(username string) (*dynamodb.ScanOutput, error) {
-	return scanUsername(username, "username = :username")
+	return scanUsername(username, aws.String("username = :username"))
 }
 
 func ScanUsernamePrefix(usernamePrefix string) (*dynamodb.ScanOutput, error) {
-	return scanUsername(usernamePrefix, "begins_with(username, :username)")
+	return scanUsername(usernamePrefix, aws.String("begins_with(username, :username)"))
 }
 
-func scanUsername(username string, filterExpression string) (*dynamodb.ScanOutput, error) {
+func scanUsername(username string, filterExpression *string) (*dynamodb.ScanOutput, error) {
 	input := &dynamodb.ScanInput{
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":username": {
 				S: aws.String(username),
 			},
 		},
-		FilterExpression: aws.String(filterExpression),
-		TableName:        aws.String(authorizationTableName),
+		FilterExpression: filterExpression,
+		TableName:        authorizationTableName,
 	}
 	return conn.Scan(input)
 }
@@ -75,7 +111,7 @@ func PutTwitterOAuthItem(user goTwitter.User) (*dynamodb.PutItemOutput, error) {
 	return putItem(user, twitterOAuthTableName)
 }
 
-func putItem(item interface{}, tableName string) (*dynamodb.PutItemOutput, error) {
+func putItem(item interface{}, tableName *string) (*dynamodb.PutItemOutput, error) {
 	_item, err := dynamodbattribute.MarshalMap(item)
 	if err != nil {
 		return nil, err
@@ -83,7 +119,7 @@ func putItem(item interface{}, tableName string) (*dynamodb.PutItemOutput, error
 
 	input := &dynamodb.PutItemInput{
 		Item:      _item,
-		TableName: aws.String(tableName),
+		TableName: tableName,
 	}
 
 	return conn.PutItem(input)
@@ -115,6 +151,19 @@ func DynamoErrHandler(err error) {
 	}
 }
 
+func GetAuthorizationItemByUserAddress(userAddress *string) (*dynamodb.QueryOutput, error) {
+	input := &dynamodb.QueryInput{
+		TableName:              authorizationTableName,
+		KeyConditionExpression: aws.String("userAddress = :userAddress"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":userAddress": &dynamodb.AttributeValue{
+				S: userAddress,
+			},
+		},
+	}
+	return conn.Query(input)
+}
+
 func GetTwitterOAuthItem(screenName string) (*dynamodb.GetItemOutput, error) {
 	item := map[string]string{
 		"screen_name": screenName,
@@ -122,7 +171,7 @@ func GetTwitterOAuthItem(screenName string) (*dynamodb.GetItemOutput, error) {
 	return getItem(item, twitterOAuthTableName)
 }
 
-func getItem(item interface{}, tableName string) (*dynamodb.GetItemOutput, error) {
+func getItem(item interface{}, tableName *string) (*dynamodb.GetItemOutput, error) {
 	_item, err := dynamodbattribute.MarshalMap(item)
 	if err != nil {
 		return nil, err
@@ -130,7 +179,7 @@ func getItem(item interface{}, tableName string) (*dynamodb.GetItemOutput, error
 
 	input := &dynamodb.GetItemInput{
 		Key:       _item,
-		TableName: aws.String(tableName),
+		TableName: tableName,
 	}
 
 	return conn.GetItem(input)
