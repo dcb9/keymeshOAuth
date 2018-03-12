@@ -194,7 +194,15 @@ func twitterVerifyHandler(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	err = p.HandleTwitterVerify(req.Form.Get("userAddress"))
+	var socialProof *proxy.SocialProof
+	if p.IsPrivateNetwork() {
+		socialProof = &proxy.SocialProof{
+			Username: req.Form.Get("username"),
+			ProofURL: req.Form.Get("proofURL"),
+		}
+	}
+
+	err = p.HandleTwitterVerify(req.Form.Get("userAddress"), socialProof)
 	if err != nil {
 		fmt.Println("proxy.HandleTwitterVerify error:", err.Error())
 		w.WriteHeader(http.StatusBadRequest)

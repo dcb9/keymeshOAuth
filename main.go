@@ -165,12 +165,17 @@ func twitterVerify(p *proxy.Proxy, request events.APIGatewayProxyRequest) (event
 	if userAddress == "" {
 		return events.APIGatewayProxyResponse{}, errEmptyUserAddress
 	}
-	networkID := request.QueryStringParameters["networkID"]
-	if networkID == "" {
-		return events.APIGatewayProxyResponse{}, errEmptyNetworkID
+	var socialProof *proxy.SocialProof
+	if p.IsPrivateNetwork() {
+		username := request.QueryStringParameters["username"]
+		proofURL := request.QueryStringParameters["proofURL"]
+		socialProof = &proxy.SocialProof{
+			Username: username,
+			ProofURL: proofURL,
+		}
 	}
 
-	err := p.HandleTwitterVerify(userAddress)
+	err := p.HandleTwitterVerify(userAddress, socialProof)
 	if err != nil {
 		return events.APIGatewayProxyResponse{}, err
 	}

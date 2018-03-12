@@ -241,52 +241,78 @@ func (p *Proxy) convertScanUsernameOutput(output *dynamodb.ScanOutput) ([]*UserI
 	return userInfoList, nil
 }
 
-func (p *Proxy) HandleTwitterVerify(userAddress string) error {
-	payload := GetUserLastProofEventPlayload{
-		UserAddress: userAddress,
-		Platform:    "twitter",
-	}
-	payloadBytes, _ := json.Marshal(payload)
+// https://ethereum.stackexchange.com/questions/17051/how-to-select-a-network-id-or-is-there-a-list-of-network-ids?noredirect=1&lq=1
+var networkIDs = []int{
+	0,
+	1,
+	1,
+	1,
+	2,
+	3,
+	4,
+	8,
+	42,
+	77,
+	99,
+	7762959,
+}
 
-	fmt.Println("Invoke payload")
-	fmt.Println(string(payloadBytes))
-	svc := lambda.New(session.New())
-	input := &lambda.InvokeInput{
-		FunctionName:   aws.String("getUserLastProofEventLambda"),
-		Payload:        payloadBytes,
-		InvocationType: aws.String("RequestResponse"),
-	}
-
-	result, err := svc.Invoke(input)
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case lambda.ErrCodeServiceException:
-				fmt.Println(lambda.ErrCodeServiceException, aerr.Error())
-			case lambda.ErrCodeResourceNotFoundException:
-				fmt.Println(lambda.ErrCodeResourceNotFoundException, aerr.Error())
-			case lambda.ErrCodeInvalidRequestContentException:
-				fmt.Println(lambda.ErrCodeInvalidRequestContentException, aerr.Error())
-			case lambda.ErrCodeInvalidRuntimeException:
-				fmt.Println(lambda.ErrCodeInvalidRuntimeException, aerr.Error())
-			default:
-				fmt.Println(aerr.Error())
-			}
-		} else {
-			// Print the error, cast err to awserr.Error to get the Code and
-			// Message from an error.
-			fmt.Println(err.Error())
+func (p *Proxy) IsPrivateNetwork() bool {
+	for _, id := range networkIDs {
+		if id == p.networkID {
+			return false
 		}
-		return err
 	}
+	return true
+}
 
-	fmt.Println(result)
-	fmt.Printf("result payload: %s\n", string(result.Payload))
-	var socialProof SocialProof
-	err = json.Unmarshal(result.Payload, &socialProof)
-	if err != nil {
-		fmt.Println(err.Error())
-		return err
+func (p *Proxy) HandleTwitterVerify(userAddress string, socialProof *SocialProof) error {
+	if socialProof == nil {
+		payload := GetUserLastProofEventPlayload{
+			UserAddress: userAddress,
+			Platform:    "twitter",
+		}
+		payloadBytes, _ := json.Marshal(payload)
+
+		fmt.Println("Invoke payload")
+		fmt.Println(string(payloadBytes))
+		svc := lambda.New(session.New())
+		input := &lambda.InvokeInput{
+			FunctionName:   aws.String("getUserLastProofEventLambda"),
+			Payload:        payloadBytes,
+			InvocationType: aws.String("RequestResponse"),
+		}
+
+		result, err := svc.Invoke(input)
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				case lambda.ErrCodeServiceException:
+					fmt.Println(lambda.ErrCodeServiceException, aerr.Error())
+				case lambda.ErrCodeResourceNotFoundException:
+					fmt.Println(lambda.ErrCodeResourceNotFoundException, aerr.Error())
+				case lambda.ErrCodeInvalidRequestContentException:
+					fmt.Println(lambda.ErrCodeInvalidRequestContentException, aerr.Error())
+				case lambda.ErrCodeInvalidRuntimeException:
+					fmt.Println(lambda.ErrCodeInvalidRuntimeException, aerr.Error())
+				default:
+					fmt.Println(aerr.Error())
+				}
+			} else {
+				// Print the error, cast err to awserr.Error to get the Code and
+				// Message from an error.
+				fmt.Println(err.Error())
+			}
+			return err
+		}
+
+		fmt.Println(result)
+		fmt.Printf("result payload: %s\n", string(result.Payload))
+		err = json.Unmarshal(result.Payload, &socialProof)
+		if err != nil {
+			fmt.Println(err.Error())
+			return err
+		}
 	}
 
 	item, err := p.db.GetTwitterOAuthItem(socialProof.Username)
