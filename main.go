@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	lambda.Start(corsHandler(handler))
+	lambda.Start(corsHandler(errorHandler(handler)))
 }
 
 var (
@@ -146,6 +146,21 @@ func twitterVerify(request events.APIGatewayProxyRequest) (events.APIGatewayProx
 
 type lambdaHandler func(events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error)
 
+func errorHandler(h lambdaHandler) lambdaHandler {
+	return func(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+		resp, err := h(request)
+
+		if err != nil {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+				Body:       err.Error(),
+			}, nil
+		}
+
+		return resp, nil
+	}
+}
+
 func corsHandler(h lambdaHandler) lambdaHandler {
 	return func(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 		var resp events.APIGatewayProxyResponse
@@ -156,10 +171,8 @@ func corsHandler(h lambdaHandler) lambdaHandler {
 			}, nil
 		} else {
 			resp, err = h(request)
-			if err != nil && resp.StatusCode == 0 {
-				resp.StatusCode = http.StatusInternalServerError
-			}
 		}
+
 		if resp.Headers == nil {
 			resp.Headers = map[string]string{}
 		}
