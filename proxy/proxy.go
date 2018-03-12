@@ -36,6 +36,44 @@ func init() {
 	svc = s3.New(sess)
 }
 
+func NewProxy(networkID int) *Proxy {
+	p := &Proxy{
+		networkID: networkID,
+	}
+	p.init()
+	return p
+}
+
+func (p *Proxy) init() {
+	p.db = db.NewDB(p.networkID)
+}
+
+func (p *Proxy) HandlePutPrekeys(publicKeyHex string, requestBody string) (err error) {
+	var req PutPrekeysReq
+	err = json.Unmarshal([]byte(requestBody), &req)
+	if err != nil {
+		return
+	}
+
+	err = verifyPrekeys(publicKeyHex, &req)
+	if err != nil {
+		return
+	}
+
+	input := &s3.PutObjectInput{
+		Body:   aws.ReadSeekCloser(strings.NewReader(requestBody)),
+		Bucket: aws.String(prekeysBucketName),
+		Key:    aws.String(fmt.Sprintf("%d/%s", p.networkID, publicKeyHex)),
+	}
+	_, err = svc.PutObject(input)
+	return
+}
+
+type Proxy struct {
+	networkID int
+	db        *db.DB
+}
+
 type GetUserLastProofEventPlayload struct {
 	UserAddress string `json:"userAddress"`
 	Platform    string `json:"platform"`
@@ -65,6 +103,7 @@ type UserInfo struct {
 	PlatformName     db.PlatformName   `json:"platformName"`
 	TwitterOAuthInfo *TwitterOAuthInfo `json:"twitterOAuthInfo"`
 	GravatarHash     string            `json:"gravatarHash"`
+	ProofURL         string            `json:"proofURL"`
 }
 
 type PutPrekeysReq struct {
@@ -97,34 +136,13 @@ func verifyPrekeys(publicKeyHex string, request *PutPrekeysReq) (err error) {
 	return
 }
 
-func HandlePutPrekeys(networkID, publicKeyHex string, requestBody string) (err error) {
-	var req PutPrekeysReq
-	err = json.Unmarshal([]byte(requestBody), &req)
-	if err != nil {
-		return
-	}
-
-	err = verifyPrekeys(publicKeyHex, &req)
-	if err != nil {
-		return
-	}
-
-	input := &s3.PutObjectInput{
-		Body:   aws.ReadSeekCloser(strings.NewReader(requestBody)),
-		Bucket: aws.String(prekeysBucketName),
-		Key:    aws.String(fmt.Sprintf("%s/%s", networkID, publicKeyHex)),
-	}
-	_, err = svc.PutObject(input)
-	return
-}
-
-func HandleSearchUserByUsernamePrefix(usernamePrefix string, limit int) ([]*UserInfo, error) {
-	output, err := db.ScanUsernamePrefix(usernamePrefix)
+func (p *Proxy) HandleSearchUserByUsernamePrefix(usernamePrefix string, limit int) ([]*UserInfo, error) {
+	output, err := p.db.ScanUsernamePrefix(usernamePrefix)
 	if err != nil {
 		return nil, err
 	}
 
-	return convertScanUsernameOutput(output)
+	return p.convertScanUsernameOutput(output)
 }
 
 func NewTwitterOAuthInfo(user *goTwitter.User) *TwitterOAuthInfo {
@@ -133,7 +151,7 @@ func NewTwitterOAuthInfo(user *goTwitter.User) *TwitterOAuthInfo {
 	}
 }
 
-func fillTwitterOAuthInfo(userInfoList []*UserInfo, wg *sync.WaitGroup) {
+func (p *Proxy) fillTwitterOAuthInfo(userInfoList []*UserInfo, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	usernames := make([]string, 0)
@@ -144,7 +162,7 @@ func fillTwitterOAuthInfo(userInfoList []*UserInfo, wg *sync.WaitGroup) {
 		return
 	}
 
-	data, err := db.BatchGetTwitterOAuth(usernames)
+	data, err := p.db.BatchGetTwitterOAuth(usernames)
 	if err != nil {
 		panic(err)
 	}
@@ -162,7 +180,7 @@ func fillTwitterOAuthInfo(userInfoList []*UserInfo, wg *sync.WaitGroup) {
 	}
 }
 
-func fillOAuthInfo(userInfoList []*UserInfo) (err error) {
+func (p *Proxy) fillOAuthInfo(userInfoList []*UserInfo) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = errors.New(fmt.Sprintf("error %s", r))
@@ -171,7 +189,7 @@ func fillOAuthInfo(userInfoList []*UserInfo) (err error) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go fillTwitterOAuthInfo(userInfoList, &wg)
+	go p.fillTwitterOAuthInfo(userInfoList, &wg)
 	//go fillFacebookOAuthInfo(userInfoList, &wg)
 	//go fillGithubOAuthInfo(userInfoList, &wg)
 	wg.Wait()
@@ -179,8 +197,8 @@ func fillOAuthInfo(userInfoList []*UserInfo) (err error) {
 	return
 }
 
-func HandleGetUserByUserAddress(userAddress string) ([]*UserInfo, error) {
-	output, err := db.GetAuthorizationItemByUserAddress(&userAddress)
+func (p *Proxy) HandleGetUserByUserAddress(userAddress string) ([]*UserInfo, error) {
+	output, err := p.db.GetAuthorizationItemByUserAddress(&userAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +209,7 @@ func HandleGetUserByUserAddress(userAddress string) ([]*UserInfo, error) {
 		return nil, err
 	}
 
-	err = fillOAuthInfo(userInfoList)
+	err = p.fillOAuthInfo(userInfoList)
 	if err != nil {
 		return nil, err
 	}
@@ -199,23 +217,23 @@ func HandleGetUserByUserAddress(userAddress string) ([]*UserInfo, error) {
 	return userInfoList, nil
 }
 
-func HandleGetUserByUsername(username string) ([]*UserInfo, error) {
-	output, err := db.ScanUsername(username)
+func (p *Proxy) HandleGetUserByUsername(username string) ([]*UserInfo, error) {
+	output, err := p.db.ScanUsername(username)
 	if err != nil {
 		return nil, err
 	}
 
-	return convertScanUsernameOutput(output)
+	return p.convertScanUsernameOutput(output)
 }
 
-func convertScanUsernameOutput(output *dynamodb.ScanOutput) ([]*UserInfo, error) {
+func (p *Proxy) convertScanUsernameOutput(output *dynamodb.ScanOutput) ([]*UserInfo, error) {
 	userInfoList := make([]*UserInfo, 0)
 	err := dynamodbattribute.UnmarshalListOfMaps(output.Items, &userInfoList)
 	if err != nil {
 		return nil, err
 	}
 
-	err = fillOAuthInfo(userInfoList)
+	err = p.fillOAuthInfo(userInfoList)
 	if err != nil {
 		return nil, err
 	}
@@ -223,13 +241,15 @@ func convertScanUsernameOutput(output *dynamodb.ScanOutput) ([]*UserInfo, error)
 	return userInfoList, nil
 }
 
-func HandleTwitterVerify(userAddress string) error {
+func (p *Proxy) HandleTwitterVerify(userAddress string) error {
 	payload := GetUserLastProofEventPlayload{
 		UserAddress: userAddress,
 		Platform:    "twitter",
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
+	fmt.Println("Invoke payload")
+	fmt.Println(string(payloadBytes))
 	svc := lambda.New(session.New())
 	input := &lambda.InvokeInput{
 		FunctionName:   aws.String("getUserLastProofEventLambda"),
@@ -257,10 +277,11 @@ func HandleTwitterVerify(userAddress string) error {
 			// Message from an error.
 			fmt.Println(err.Error())
 		}
+		return err
 	}
 
 	fmt.Println(result)
-	fmt.Printf("payload: %s\n", string(result.Payload))
+	fmt.Printf("result payload: %s\n", string(result.Payload))
 	var socialProof SocialProof
 	err = json.Unmarshal(result.Payload, &socialProof)
 	if err != nil {
@@ -268,14 +289,14 @@ func HandleTwitterVerify(userAddress string) error {
 		return err
 	}
 
-	item, err := db.GetTwitterOAuthItem(socialProof.Username)
+	item, err := p.db.GetTwitterOAuthItem(socialProof.Username)
 	if err != nil {
 		fmt.Println(err.Error())
 		return err
 	}
 	fmt.Println("getTwitterOAuthItem:", item)
 
-	_, err = db.PutAuthorizationItem(db.AuthorizationItem{
+	_, err = p.db.PutAuthorizationItem(db.AuthorizationItem{
 		UserAddress:  userAddress,
 		PlatformName: db.TwitterPlatformName,
 		Username:     socialProof.Username,
@@ -296,14 +317,14 @@ func HandleTwitterLoginURL() (string, error) {
 
 var GetUserInfoErr = errors.New("get user info error")
 
-func HandleTwitterCallback(req *http.Request) ([]byte, error) {
+func (p *Proxy) HandleTwitterCallback(req *http.Request) ([]byte, error) {
 	user := twitter.GetTwitterUser(oauth1Config, req)
 	if user == nil {
 		return nil, GetUserInfoErr
 	}
 
 	userBytes, _ := json.Marshal(user)
-	_, err := db.PutTwitterOAuthItem(*user)
+	_, err := p.db.PutTwitterOAuthItem(*user)
 	if err != nil {
 		return nil, err
 	}

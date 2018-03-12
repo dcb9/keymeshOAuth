@@ -6,11 +6,21 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/dcb9/keymeshOAuth/proxy"
 )
+
+var proxies struct {
+	sync.RWMutex
+	proxies map[int]*proxy.Proxy
+}
+
+func init() {
+	proxies.proxies = make(map[int]*proxy.Proxy)
+}
 
 func main() {
 	lambda.Start(corsHandler(errorHandler(handler)))
@@ -18,31 +28,51 @@ func main() {
 
 var (
 	errPathNotMatch = errors.New("could not match any path")
+	errNoNetworkID  = errors.New(`"networkID" must be set`)
 )
 
 func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	networkIDStr := request.QueryStringParameters["networkID"]
+	if networkIDStr == "" {
+		return events.APIGatewayProxyResponse{}, errNoNetworkID
+	}
+	networkID, err := strconv.Atoi(networkIDStr)
+	if err != nil {
+		return events.APIGatewayProxyResponse{}, err
+	}
+
+	proxies.RLock()
+	p, ok := proxies.proxies[networkID]
+	proxies.RUnlock()
+	if !ok {
+		p = proxy.NewProxy(networkID)
+
+		proxies.Lock()
+		proxies.proxies[networkID] = p
+		proxies.Unlock()
+	}
+
 	switch request.Path {
 	case "/oauth/twitter/authorize_url":
 		return getTwitterAuthorizeURL()
 	case "/oauth/twitter/callback":
-		return twitterCallback(request)
+		return twitterCallback(p, request)
 	case "/oauth/twitter/verify":
-		return twitterVerify(request)
+		return twitterVerify(p, request)
 	case "/users/search":
-		return serializeUserInfoList(searchUsers(request))
+		return serializeUserInfoList(searchUsers(p, request))
 	case "/users":
-		return serializeUserInfoList(getUsers(request))
+		return serializeUserInfoList(getUsers(p, request))
 	case "/prekeys":
-		return putPrekeys(request)
+		return putPrekeys(p, request)
 	}
 
 	return events.APIGatewayProxyResponse{}, errPathNotMatch
 }
 
-func putPrekeys(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	networkID := request.QueryStringParameters["networkID"]
+func putPrekeys(p *proxy.Proxy, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	publicKeyHex := request.QueryStringParameters["publicKey"]
-	err := proxy.HandlePutPrekeys(networkID, publicKeyHex, request.Body)
+	err := p.HandlePutPrekeys(publicKeyHex, request.Body)
 	if err != nil {
 		return events.APIGatewayProxyResponse{}, err
 	}
@@ -55,16 +85,16 @@ var (
 	errEmptyGetUsersParam = errors.New(`the query param "username" or "userAddress" must be set`)
 )
 
-func getUsers(request events.APIGatewayProxyRequest) ([]*proxy.UserInfo, error) {
+func getUsers(p *proxy.Proxy, request events.APIGatewayProxyRequest) ([]*proxy.UserInfo, error) {
 	username := request.QueryStringParameters["username"]
 	if username != "" {
-		userInfoList, err := proxy.HandleGetUserByUsername(username)
+		userInfoList, err := p.HandleGetUserByUsername(username)
 		return userInfoList, err
 	}
 
 	userAddress := request.QueryStringParameters["userAddress"]
 	if userAddress != "" {
-		userInfoList, err := proxy.HandleGetUserByUserAddress(userAddress)
+		userInfoList, err := p.HandleGetUserByUserAddress(userAddress)
 		return userInfoList, err
 	}
 
@@ -75,7 +105,7 @@ var (
 	errEmptySearchUsersParam = errors.New(`the query param "usernamePrefix" must be set`)
 )
 
-func searchUsers(request events.APIGatewayProxyRequest) ([]*proxy.UserInfo, error) {
+func searchUsers(p *proxy.Proxy, request events.APIGatewayProxyRequest) ([]*proxy.UserInfo, error) {
 	limit := 10
 	limitStr := request.QueryStringParameters["limit"]
 	if limitStr != "" {
@@ -88,7 +118,7 @@ func searchUsers(request events.APIGatewayProxyRequest) ([]*proxy.UserInfo, erro
 
 	usernamePrefix := request.QueryStringParameters["usernamePrefix"]
 	if usernamePrefix != "" {
-		userInfoList, err := proxy.HandleSearchUserByUsernamePrefix(usernamePrefix, limit)
+		userInfoList, err := p.HandleSearchUserByUsernamePrefix(usernamePrefix, limit)
 		return userInfoList, err
 	}
 
@@ -107,14 +137,14 @@ func getTwitterAuthorizeURL() (events.APIGatewayProxyResponse, error) {
 	}, nil
 }
 
-func twitterCallback(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func twitterCallback(p *proxy.Proxy, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	params := url.Values{}
 	for k, v := range request.QueryStringParameters {
 		params.Add(k, v)
 	}
 	req, _ := http.NewRequest(http.MethodGet, "?"+params.Encode(), nil)
 
-	userBytes, err := proxy.HandleTwitterCallback(req)
+	userBytes, err := p.HandleTwitterCallback(req)
 	if err != nil {
 		return events.APIGatewayProxyResponse{}, err
 	}
@@ -127,14 +157,20 @@ func twitterCallback(request events.APIGatewayProxyRequest) (events.APIGatewayPr
 
 var (
 	errEmptyUserAddress = errors.New("userAddress could not be empty")
+	errEmptyNetworkID   = errors.New("networkID could not be empty")
 )
 
-func twitterVerify(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func twitterVerify(p *proxy.Proxy, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	userAddress := request.QueryStringParameters["userAddress"]
 	if userAddress == "" {
 		return events.APIGatewayProxyResponse{}, errEmptyUserAddress
 	}
-	err := proxy.HandleTwitterVerify(userAddress)
+	networkID := request.QueryStringParameters["networkID"]
+	if networkID == "" {
+		return events.APIGatewayProxyResponse{}, errEmptyNetworkID
+	}
+
+	err := p.HandleTwitterVerify(userAddress)
 	if err != nil {
 		return events.APIGatewayProxyResponse{}, err
 	}

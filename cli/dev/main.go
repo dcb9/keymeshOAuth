@@ -1,28 +1,72 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/dcb9/keymeshOAuth/proxy"
 	"github.com/rs/cors"
 )
 
+var proxies struct {
+	sync.RWMutex
+	proxies map[int]*proxy.Proxy
+}
+
+func init() {
+	proxies.proxies = make(map[int]*proxy.Proxy)
+}
+
 func main() {
 	mux := http.NewServeMux()
+
 	mux.HandleFunc("/oauth/twitter/authorize_url", twitterAuthorizeURLHandler)
 	mux.HandleFunc("/oauth/twitter/callback", twitterCallbackHandler)
 	mux.HandleFunc("/oauth/twitter/verify", twitterVerifyHandler)
 	mux.HandleFunc("/users/search", searchUsersHandler)
 	mux.HandleFunc("/users", getUsersHandler)
 	mux.HandleFunc("/prekeys", PutPrekeysHandler)
+
+	entry := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		networkIDStr := r.Form.Get("networkID")
+		if networkIDStr == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, "networkID must be set")
+			return
+		}
+		networkID, err := strconv.Atoi(networkIDStr)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, err.Error())
+			return
+		}
+
+		proxies.RLock()
+		p, ok := proxies.proxies[networkID]
+		proxies.RUnlock()
+		if !ok {
+			p = proxy.NewProxy(networkID)
+
+			proxies.Lock()
+			proxies.proxies[networkID] = p
+			proxies.Unlock()
+		}
+		ctx := context.WithValue(r.Context(), "proxy", p)
+		r = r.WithContext(ctx)
+
+		mux.ServeHTTP(w, r)
+	})
+
 	handler := cors.New(cors.Options{
 		AllowedMethods: []string{"GET", "PUT", "POST", "DELETE", "OPTIONS"},
-	}).Handler(mux)
+	}).Handler(entry)
 
 	err := http.ListenAndServe("localhost:1235", handler)
 	if err != nil {
@@ -31,9 +75,7 @@ func main() {
 }
 
 func PutPrekeysHandler(w http.ResponseWriter, req *http.Request) {
-	req.ParseForm()
-	networkID := req.Form.Get("networkID")
-	fmt.Println(networkID)
+	p := req.Context().Value("proxy").(*proxy.Proxy)
 	publicKeyHex := req.Form.Get("publicKey")
 	bytes, err := ioutil.ReadAll(req.Body)
 	if err != nil {
@@ -41,7 +83,7 @@ func PutPrekeysHandler(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	err = proxy.HandlePutPrekeys(networkID, publicKeyHex, string(bytes))
+	err = p.HandlePutPrekeys(publicKeyHex, string(bytes))
 	if err != nil {
 		fmt.Println("proxy.HandlePutPrekeys", err)
 		w.WriteHeader(http.StatusBadRequest)
@@ -51,6 +93,7 @@ func PutPrekeysHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func getUsersHandler(w http.ResponseWriter, req *http.Request) {
+	p := req.Context().Value("proxy").(*proxy.Proxy)
 	err := req.ParseForm()
 	if err != nil {
 		fmt.Println("ParseForm:", err)
@@ -60,7 +103,7 @@ func getUsersHandler(w http.ResponseWriter, req *http.Request) {
 
 	username := req.Form.Get("username")
 	if username != "" {
-		userInfoList, err := proxy.HandleGetUserByUsername(username)
+		userInfoList, err := p.HandleGetUserByUsername(username)
 		if err != nil {
 			fmt.Println("proxy.HandleGetUserByUsername:", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -73,7 +116,7 @@ func getUsersHandler(w http.ResponseWriter, req *http.Request) {
 
 	userAddress := req.Form.Get("userAddress")
 	if userAddress != "" {
-		userInfoList, err := proxy.HandleGetUserByUserAddress(userAddress)
+		userInfoList, err := p.HandleGetUserByUserAddress(userAddress)
 		if err != nil {
 			fmt.Println("proxy.HandleGetUserByUserAddress:", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -88,6 +131,7 @@ func getUsersHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func searchUsersHandler(w http.ResponseWriter, req *http.Request) {
+	p := req.Context().Value("proxy").(*proxy.Proxy)
 	err := req.ParseForm()
 	if err != nil {
 		fmt.Println("ParseForm:", err)
@@ -107,7 +151,7 @@ func searchUsersHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if usernamePrefix != "" {
-		userInfoList, err := proxy.HandleSearchUserByUsernamePrefix(usernamePrefix, limit)
+		userInfoList, err := p.HandleSearchUserByUsernamePrefix(usernamePrefix, limit)
 		if err != nil {
 			fmt.Println(err)
 		} else {
@@ -131,7 +175,8 @@ func twitterAuthorizeURLHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func twitterCallbackHandler(w http.ResponseWriter, req *http.Request) {
-	userBytes, err := proxy.HandleTwitterCallback(req)
+	p := req.Context().Value("proxy").(*proxy.Proxy)
+	userBytes, err := p.HandleTwitterCallback(req)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusUnauthorized)
@@ -142,13 +187,14 @@ func twitterCallbackHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func twitterVerifyHandler(w http.ResponseWriter, req *http.Request) {
+	p := req.Context().Value("proxy").(*proxy.Proxy)
 	err := req.ParseForm()
 	if err != nil {
 		fmt.Println("ParseForm:", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	err = proxy.HandleTwitterVerify(req.Form.Get("userAddress"))
+	err = p.HandleTwitterVerify(req.Form.Get("userAddress"))
 	if err != nil {
 		fmt.Println("proxy.HandleTwitterVerify error:", err.Error())
 		w.WriteHeader(http.StatusBadRequest)
