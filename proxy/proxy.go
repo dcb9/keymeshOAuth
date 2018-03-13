@@ -155,7 +155,13 @@ func (p *Proxy) fillTwitterOAuthInfo(userInfoList []*UserInfo, wg *sync.WaitGrou
 	defer wg.Done()
 
 	usernames := make([]string, 0)
+UserInfoList:
 	for _, v := range userInfoList {
+		for _, username := range usernames {
+			if username == v.Username {
+				continue UserInfoList
+			}
+		}
 		usernames = append(usernames, v.Username)
 	}
 	if len(usernames) < 1 {
