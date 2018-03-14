@@ -15,6 +15,9 @@ import (
 
 	"github.com/dcb9/keymeshOAuth/db"
 	"github.com/dcb9/keymeshOAuth/twitter"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 	"golang.org/x/crypto/ed25519"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -347,12 +350,15 @@ func HandleTwitterLoginURL() (string, error) {
 	return twitter.GenerateTwitterLoginURL(oauth1Config)
 }
 
-var GetUserInfoErr = errors.New("get user info error")
+var (
+	ErrGetUserInfo = errors.New("get user info error")
+	ErrInvalidSig  = errors.New("invalid signature")
+)
 
 func (p *Proxy) HandleTwitterCallback(req *http.Request) ([]byte, error) {
 	user := twitter.GetTwitterUser(oauth1Config, req)
 	if user == nil {
-		return nil, GetUserInfoErr
+		return nil, ErrGetUserInfo
 	}
 
 	userBytes, _ := json.Marshal(user)
@@ -361,5 +367,58 @@ func (p *Proxy) HandleTwitterCallback(req *http.Request) ([]byte, error) {
 		return nil, err
 	}
 
+	req.ParseForm()
+	userAddress := req.Form.Get("userAddress")
+	sig := req.Form.Get("sig")
+	message := req.Form.Get("msg")
+	if !verifySig(userAddress, sig, []byte(message)) {
+		return nil, ErrInvalidSig
+	}
+
+	_, err = p.db.PutAuthorizationItem(db.AuthorizationItem{
+		UserAddress:  userAddress,
+		PlatformName: db.TwitterPlatformName,
+		Username:     user.ScreenName,
+		ProofURL:     "",
+		Verified:     false,
+		VerifiedAt:   time.Now(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return userBytes, nil
+}
+
+func verifySig(from, sigHex string, msg []byte) bool {
+	fromAddr := common.HexToAddress(from)
+
+	sig := hexutil.MustDecode(sigHex)
+	// https://github.com/ethereum/go-ethereum/blob/55599ee95d4151a2502465e0afc7c47bd1acba77/internal/ethapi/api.go#L442
+	if sig[64] != 27 && sig[64] != 28 {
+		return false
+	}
+	sig[64] -= 27
+
+	pubKey, err := crypto.SigToPub(signHash(msg), sig)
+	if err != nil {
+		return false
+	}
+
+	recoveredAddr := crypto.PubkeyToAddress(*pubKey)
+
+	return fromAddr == recoveredAddr
+}
+
+// https://github.com/ethereum/go-ethereum/blob/55599ee95d4151a2502465e0afc7c47bd1acba77/internal/ethapi/api.go#L404
+// signHash is a helper function that calculates a hash for the given message that can be
+// safely used to calculate a signature from.
+//
+// The hash is calculated as
+//   keccak256("\x19Ethereum Signed Message:\n"${message length}${message}).
+//
+// This gives context to the signed message and prevents signing of transactions.
+func signHash(data []byte) []byte {
+	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(data), data)
+	return crypto.Keccak256([]byte(msg))
 }
