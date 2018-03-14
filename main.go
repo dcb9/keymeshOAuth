@@ -219,7 +219,7 @@ func corsHandler(h lambdaHandler) lambdaHandler {
 		}
 
 		resp.Headers["Access-Control-Allow-Headers"] = "*"
-		resp.Headers["Access-Control-Allow-Methods"] = "*"
+		resp.Headers["Access-Control-Allow-Methods"] = "GET, HEAD, POST, OPTIONS, PUT, DELETE, PATCH, CONNECT"
 		resp.Headers["Access-Control-Allow-Origin"] = "*"
 
 		return resp, err
