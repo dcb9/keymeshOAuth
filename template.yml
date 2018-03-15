@@ -48,3 +48,14 @@ Resources:
           Properties:
             Path: /prekeys
             Method: any
+        AccountInfo:
+          Type: Api
+          Properties:
+            Path: /account-info
+            Method: any
+        Subscribe:
+          Type: Api
+          Properties:
+            Path: /subscribe
+            Method: any
+
