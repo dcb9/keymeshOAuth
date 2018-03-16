@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/dcb9/keymeshOAuth/crypto"
 	"github.com/dcb9/keymeshOAuth/db"
@@ -29,6 +30,7 @@ func HandlePutAccountInfo(requestBody string) (err error) {
 		info.UserAddress = "-"
 	}
 
+	info.CreatedAt = time.Now()
 	fmt.Printf("%#v\n", info)
 	_, err = db.PutAccountInfo(*info)
 
