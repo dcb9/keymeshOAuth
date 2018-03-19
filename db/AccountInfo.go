@@ -18,6 +18,7 @@ type AccountInfo struct {
 	Msg         string    `json:"msg,omitempty"`
 	Sig         string    `json:"sig,omitempty"`
 	ValidSig    bool      `json:"validSig,omitempty"`
+	Ref         string    `json:"ref,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 

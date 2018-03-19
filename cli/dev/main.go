@@ -32,7 +32,7 @@ func main() {
 		AllowedMethods: []string{"GET", "PUT", "POST", "DELETE", "OPTIONS"},
 	}).Handler(mux)
 
-	err := http.ListenAndServe("localhost:1235", handler)
+	err := http.ListenAndServe(":1235", handler)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
