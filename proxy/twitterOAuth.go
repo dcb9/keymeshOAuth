@@ -106,9 +106,9 @@ func getSocialProof(userAddress string) (*SocialProof, error) {
 	return socialProof, nil
 }
 
-func NewTwitterOAuthInfo(user *goTwitter.User) *TwitterOAuthInfo {
+func NewTwitterOAuthInfo(user goTwitter.User) *TwitterOAuthInfo {
 	return &TwitterOAuthInfo{
-		User: user,
+		User: &user,
 	}
 }
 
@@ -136,8 +136,9 @@ UserInfoList:
 
 	list := make(map[string]*TwitterOAuthInfo)
 	for i, v := range data {
-		list[i] = NewTwitterOAuthInfo(&v)
+		list[i] = NewTwitterOAuthInfo(v)
 	}
+
 	for i, v := range userInfoList {
 		if v.PlatformName == db.TwitterPlatformName {
 			info := list[v.Username]
